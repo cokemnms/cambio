@@ -1,0 +1,5 @@
+  - 3 cards each, dealt face-down. no card peeking in the start.
+  - Deck values: number cards = face value; J = 11, Q = 12; K = -1; A = 1.
+  - On your turn: draw from deck only → either swap it into your hand (discarding a card) or discard it directly.
+  - If you discard a drawn card that has a power, you use it: 7/8 = peek opponent card, 9/10 = peek ur own card, J peek and swap, option to not swap after peeking, Q = blind swap.
+  - if u take a card from the deck, then swap from one of ur 3 cards and then when u have to discard that card, if it has a power, we can use it.
