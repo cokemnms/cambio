@@ -2,18 +2,14 @@
   "name": "cambio",
   "private": true,
   "version": "0.1.0",
-  "description": "Online real-time Cambio card game (mobile-first web)",
+  "description": "Online real-time Cambio card game (responsive web)",
   "workspaces": [
     "shared",
-    "server",
-    "client"
+    "engine"
   ],
   "scripts": {
-    "dev": "npm run dev --workspace=server & npm run dev --workspace=client",
-    "dev:server": "npm run dev --workspace=server",
-    "dev:client": "npm run dev --workspace=client",
-    "build": "npm run build --workspace=shared && npm run build --workspace=server && npm run build --workspace=client",
-    "start": "npm run start --workspace=server"
+    "test": "npm run test --workspace=@cambio/engine",
+    "build": "npm run build --workspace=@cambio/shared && npm run build --workspace=@cambio/engine"
   },
   "engines": {
     "node": ">=20"

@@ -1,13 +1,13 @@
+import { randomUUID } from "node:crypto";
 import type { Card } from "@cambio/shared";
 import { RANKS, SUITS } from "@cambio/shared";
-import { makeId } from "../util/ids.js";
 
 /** Build a standard 52-card deck with unique physical ids. */
 export function buildDeck(): Card[] {
   const cards: Card[] = [];
   for (const suit of SUITS) {
     for (const rank of RANKS) {
-      cards.push({ id: makeId(), rank, suit });
+      cards.push({ id: randomUUID(), rank, suit });
     }
   }
   return cards;

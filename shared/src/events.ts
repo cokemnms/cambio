@@ -12,7 +12,7 @@ export interface Ack<T = void> {
   data?: T;
 }
 
-/** Events the client sends to the server. Each takes an ack callback. */
+/** Events the client sends to the server. */
 export interface ClientToServerEvents {
   createRoom: (
     p: { name: string },
@@ -25,13 +25,8 @@ export interface ClientToServerEvents {
   leaveRoom: (ack?: (r: Ack) => void) => void;
   startGame: (ack?: (r: Ack) => void) => void;
 
-  // Initial peek phase
-  peekCard: (p: { slot: number }, ack?: (r: Ack) => void) => void;
-  peekReady: (ack?: (r: Ack) => void) => void;
-
   // Turn actions
   drawFromDeck: (ack?: (r: Ack) => void) => void;
-  takeFromDiscard: (ack?: (r: Ack) => void) => void;
   swapHeld: (p: { slot: number }, ack?: (r: Ack) => void) => void;
   discardHeld: (ack?: (r: Ack) => void) => void;
 
@@ -40,11 +35,7 @@ export interface ClientToServerEvents {
   powerSwap: (p: { first: SlotRef; second: SlotRef }, ack?: (r: Ack) => void) => void;
   powerSkip: (ack?: (r: Ack) => void) => void;
 
-  // Anytime actions
-  snap: (p: { slot: number }, ack?: (r: Ack) => void) => void;
-  callCambio: (ack?: (r: Ack) => void) => void;
-
-  // Post-round
+  // Post-game
   rematch: (ack?: (r: Ack) => void) => void;
 }
 
