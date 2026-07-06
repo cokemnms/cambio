@@ -30,7 +30,20 @@ Offer, alongside the v1 quick variant, a toggle to play the full traditional rul
 - **Match play** to a losing score (e.g. first to 100 loses; lowest total is champion).
 - **2–6 players.**
 
-**Implementation note:** keep all rule variation isolated in
-`server/src/game/rules.ts` and drive game flow through an explicit phase state machine.
-Done right, Classic mode is a selectable **Rules preset** plus a few extra phase
-transitions (initial peek, Cambio call, reshuffle) — not a rewrite of the engine.
+**Implementation note:** keep all rule variation isolated in `engine/src/rules.ts` and
+drive game flow through an explicit phase state machine. Done right, Classic mode is a
+selectable **Rules preset** plus a few extra phase transitions (initial peek, Cambio
+call, reshuffle) — not a rewrite of the engine.
+
+## 3. Production hardening (before deploy / scale)
+
+- **Persist game state to `room.storage` + restore in `onStart()`.** Per the PartyKit
+  docs, the in-memory `Game` on the party instance is only guaranteed to live while the
+  party is active and hibernation is off (our current setup). To survive redeploys,
+  eviction, or enabling hibernation, serialize the game to `this.room.storage` on each
+  mutation and rehydrate in `onStart()`. Deferred for v1 (short, actively-connected
+  games) — deliberate tradeoff, not an oversight.
+- **Enable hibernation** (`options: { hibernate: true }`) for cost/scale once storage
+  persistence is in place.
+- **Room-code allocation:** today the first connector to any code becomes host (join =
+  create-or-join). Add real "create vs join" validation so a typo'd code fails cleanly.

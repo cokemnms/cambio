@@ -6,42 +6,27 @@ export interface SlotRef {
   slot: number;
 }
 
-export interface Ack<T = void> {
-  ok: boolean;
-  error?: string;
-  data?: T;
-}
+/**
+ * Wire protocol. PartyKit passes raw messages (no ack callbacks), so both sides
+ * speak these tagged unions. `clientId` and room come from the connection, not
+ * the message.
+ */
 
-/** Events the client sends to the server. */
-export interface ClientToServerEvents {
-  createRoom: (
-    p: { name: string },
-    ack: (r: Ack<{ roomCode: string; youId: string }>) => void
-  ) => void;
-  joinRoom: (
-    p: { code: string; name: string },
-    ack: (r: Ack<{ roomCode: string; youId: string }>) => void
-  ) => void;
-  leaveRoom: (ack?: (r: Ack) => void) => void;
-  startGame: (ack?: (r: Ack) => void) => void;
+/** Client → server intents. */
+export type ClientMsg =
+  | { t: "setName"; name: string }
+  | { t: "start" }
+  | { t: "draw" }
+  | { t: "swap"; slot: number }
+  | { t: "discard" }
+  | { t: "peek"; target: SlotRef }
+  | { t: "powerSwap"; first: SlotRef; second: SlotRef }
+  | { t: "skip" }
+  | { t: "rematch" }
+  | { t: "leave" };
 
-  // Turn actions
-  drawFromDeck: (ack?: (r: Ack) => void) => void;
-  swapHeld: (p: { slot: number }, ack?: (r: Ack) => void) => void;
-  discardHeld: (ack?: (r: Ack) => void) => void;
-
-  // Power resolution (only valid in turnPhase === "power")
-  powerPeek: (p: { target: SlotRef }, ack?: (r: Ack) => void) => void;
-  powerSwap: (p: { first: SlotRef; second: SlotRef }, ack?: (r: Ack) => void) => void;
-  powerSkip: (ack?: (r: Ack) => void) => void;
-
-  // Post-game
-  rematch: (ack?: (r: Ack) => void) => void;
-}
-
-/** Events the server pushes to the client. */
-export interface ServerToClientEvents {
-  state: (view: GameStateView) => void;
-  notice: (p: { message: string; kind?: "info" | "warn" | "error" }) => void;
-  roomClosed: (p: { reason: string }) => void;
-}
+/** Server → client pushes. */
+export type ServerMsg =
+  | { t: "state"; view: GameStateView }
+  | { t: "notice"; message: string; kind?: "info" | "warn" | "error" }
+  | { t: "closed"; reason: string };
