@@ -10,12 +10,26 @@ const PARTY_HOST =
 
 const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
+// `getRandomValues` works in insecure contexts (http over LAN); `randomUUID`
+// does NOT. Build ids from bytes so the app runs on a phone over plain http.
+function randomBytes(len: number): Uint8Array {
+  const c = globalThis.crypto;
+  if (c?.getRandomValues) return c.getRandomValues(new Uint8Array(len));
+  return Uint8Array.from({ length: len }, () => Math.floor(Math.random() * 256));
+}
+
+function uuid(): string {
+  const b = randomBytes(16);
+  b[6] = (b[6] & 0x0f) | 0x40; // version 4
+  b[8] = (b[8] & 0x3f) | 0x80; // variant
+  const h = Array.from(b, (x) => x.toString(16).padStart(2, "0"));
+  return `${h.slice(0, 4).join("")}-${h.slice(4, 6).join("")}-${h
+    .slice(6, 8)
+    .join("")}-${h.slice(8, 10).join("")}-${h.slice(10, 16).join("")}`;
+}
+
 function randomRoomCode(len = 4): string {
-  const bytes = new Uint8Array(len);
-  crypto.getRandomValues(bytes);
-  return Array.from(bytes, (b) => CODE_ALPHABET[b % CODE_ALPHABET.length]).join(
-    ""
-  );
+  return Array.from(randomBytes(len), (b) => CODE_ALPHABET[b % CODE_ALPHABET.length]).join("");
 }
 
 // Persistent identity so a refresh / reconnect reclaims the same seat.
@@ -23,7 +37,7 @@ function persistentClientId(): string {
   const KEY = "cambio_client_id";
   let id = localStorage.getItem(KEY);
   if (!id) {
-    id = crypto.randomUUID();
+    id = uuid();
     localStorage.setItem(KEY, id);
   }
   return id;

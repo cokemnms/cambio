@@ -8,20 +8,45 @@
     `${location.origin}${location.pathname}?room=${view.roomCode}`
   );
 
+  async function copyText(text: string): Promise<boolean> {
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+        return true;
+      }
+    } catch {
+      /* fall through to legacy copy */
+    }
+    try {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.select();
+      const ok = document.execCommand("copy");
+      document.body.removeChild(ta);
+      return ok;
+    } catch {
+      return false;
+    }
+  }
+
   async function share() {
-    const data = {
-      title: "Cambio",
-      text: `Join my Cambio game — room ${view.roomCode}`,
-      url: shareUrl,
-    };
+    // Web Share API is secure-context-only; try it, otherwise copy the link.
     try {
       if (navigator.share) {
-        await navigator.share(data);
+        await navigator.share({
+          title: "Cambio",
+          text: `Join my Cambio game — room ${view.roomCode}`,
+          url: shareUrl,
+        });
         return;
       }
-      throw new Error("no share");
     } catch {
-      await navigator.clipboard.writeText(shareUrl);
+      /* user cancelled or unsupported — fall back to copy */
+    }
+    if (await copyText(shareUrl)) {
       copied = true;
       setTimeout(() => (copied = false), 1500);
     }
