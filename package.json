@@ -6,12 +6,14 @@
   "workspaces": [
     "shared",
     "engine",
-    "party"
+    "party",
+    "client"
   ],
   "scripts": {
     "test": "npm run test --workspace=@cambio/engine",
     "build": "npm run build --workspace=@cambio/shared && npm run build --workspace=@cambio/engine",
-    "dev:party": "npm run dev --workspace=@cambio/party"
+    "dev:party": "npm run dev --workspace=@cambio/party",
+    "dev:client": "npm run dev --workspace=@cambio/client"
   },
   "engines": {
     "node": ">=20"
