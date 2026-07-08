@@ -1,24 +1,32 @@
-import type * as Party from "partykit/server";
+import {
+  Server,
+  routePartykitRequest,
+  type Connection,
+  type ConnectionContext,
+} from "partyserver";
 import type { ClientMsg, ServerMsg } from "@cambio/shared";
 import { seatKey } from "@cambio/shared";
 import { Game, GameError } from "@cambio/engine";
 
+interface Env {
+  Cambio: DurableObjectNamespace<Cambio>;
+  DEV_SECRET?: string;
+}
+
 /**
- * One PartyKit party per room. Holds a single authoritative Game and pushes a
- * per-connection REDACTED view after every mutation. The connection id is the
- * player's persistent clientId (PartySocket sets it), so reconnects reclaim the
- * same seat.
+ * One Durable Object per room. Holds a single authoritative Game and pushes a
+ * per-connection REDACTED view after every mutation — a hidden card's rank/suit
+ * never reaches a client that shouldn't see it. Identity is name-based
+ * (seatKey), so a player reconnects to the same seat from any device.
  */
-export default class CambioServer implements Party.Server {
+export class Cambio extends Server<Env> {
   game = new Game();
   /** Live connection id -> name-based seat key. */
   seats = new Map<string, string>();
   /** Seat key -> secret token, minted on first claim so the owner is recognized. */
   tokens = new Map<string, string>();
 
-  constructor(readonly room: Party.Room) {}
-
-  onConnect(conn: Party.Connection, ctx: Party.ConnectionContext): void {
+  onConnect(conn: Connection, ctx: ConnectionContext): void {
     const url = new URL(ctx.request.url);
     const name = (url.searchParams.get("name") ?? "Player").slice(0, 16);
     const token = url.searchParams.get("token") ?? "";
@@ -54,10 +62,10 @@ export default class CambioServer implements Party.Server {
     }
     this.seats.set(conn.id, key);
     this.send(conn, { t: "welcome", token: seatTok });
-    this.broadcast();
+    this.pushState();
   }
 
-  onMessage(message: string, sender: Party.Connection): void {
+  onMessage(sender: Connection, message: string): void {
     const key = this.seats.get(sender.id);
     if (!key) return;
     let msg: ClientMsg;
@@ -68,13 +76,13 @@ export default class CambioServer implements Party.Server {
     }
     try {
       this.handle(msg, key);
-      this.broadcast();
+      this.pushState();
     } catch (e) {
       this.send(sender, { t: "notice", message: errText(e), kind: "error" });
     }
   }
 
-  onClose(conn: Party.Connection): void {
+  onClose(conn: Connection): void {
     const key = this.seats.get(conn.id);
     this.seats.delete(conn.id);
     // Only mark the seat offline if no other live connection holds it (same
@@ -82,7 +90,7 @@ export default class CambioServer implements Party.Server {
     if (key && ![...this.seats.values()].includes(key)) {
       this.game.setConnected(key, false);
     }
-    this.broadcast();
+    this.pushState();
   }
 
   private handle(msg: ClientMsg, clientId: string): void {
@@ -122,8 +130,8 @@ export default class CambioServer implements Party.Server {
         const wasPlaying = this.game.phase === "playing";
         this.game.removePlayer(clientId);
         if (wasPlaying && this.game.phase === "lobby") {
-          for (const conn of this.room.getConnections()) {
-            if (conn.id !== clientId)
+          for (const conn of this.getConnections()) {
+            if (this.seats.get(conn.id) !== clientId)
               this.send(conn, {
                 t: "notice",
                 message: `${name} left the game`,
@@ -140,7 +148,7 @@ export default class CambioServer implements Party.Server {
   }
 
   private applyDev(msg: Extract<ClientMsg, { t: "dev" }>, viewerKey: string): void {
-    const secret = this.room.env.DEV_SECRET as string | undefined;
+    const secret = this.env.DEV_SECRET;
     if (!secret || msg.secret !== secret) return; // no secret -> channel is dead
     const a = msg.action;
     switch (a.kind) {
@@ -153,18 +161,18 @@ export default class CambioServer implements Party.Server {
     }
   }
 
-  private broadcast(): void {
+  private pushState(): void {
     this.game.clearExpiredReveals();
-    for (const conn of this.room.getConnections()) {
+    for (const conn of this.getConnections()) {
       const key = this.seats.get(conn.id);
       if (!key) continue;
       const view = this.game.buildView(key);
-      view.roomCode = this.room.id;
+      view.roomCode = this.name;
       this.send(conn, { t: "state", view });
     }
   }
 
-  private send(conn: Party.Connection, msg: ServerMsg): void {
+  private send(conn: Connection, msg: ServerMsg): void {
     conn.send(JSON.stringify(msg));
   }
 }
@@ -177,3 +185,12 @@ function newToken(): string {
   const b = crypto.getRandomValues(new Uint8Array(16));
   return Array.from(b, (x) => x.toString(16).padStart(2, "0")).join("");
 }
+
+export default {
+  async fetch(request: Request, env: Env): Promise<Response> {
+    return (
+      (await routePartykitRequest(request, env)) ??
+      new Response("Not found", { status: 404 })
+    );
+  },
+} satisfies ExportedHandler<Env>;

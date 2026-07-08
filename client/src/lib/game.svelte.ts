@@ -69,6 +69,7 @@ class GameClient {
     const token = localStorage.getItem("cambio_tok_" + room) ?? "";
     this.socket = new PartySocket({
       host: PARTY_HOST,
+      party: "cambio",
       room,
       query: token ? { name, token } : { name },
     });

@@ -1,7 +1,0 @@
-{
-  "$schema": "https://www.partykit.io/schema.json",
-  "name": "cambio",
-  "main": "src/server.ts",
-  "serve": { "path": "../client/dist" },
-  "compatibilityDate": "2024-11-01"
-}

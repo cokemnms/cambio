@@ -7,7 +7,7 @@ import { RANKS, SUITS } from "@cambio/shared";
 let idCounter = 0;
 function cardId(): string {
   idCounter += 1;
-  const c = globalThis.crypto;
+  const c = typeof crypto !== "undefined" ? crypto : undefined;
   let suffix: string;
   if (c?.getRandomValues) {
     const b = c.getRandomValues(new Uint8Array(4));

@@ -4,6 +4,8 @@ build/
 *.log
 .env
 .env.local
+.dev.vars
+.wrangler/
 .DS_Store
 *.tsbuildinfo
 coverage/
