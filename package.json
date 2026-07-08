@@ -10,8 +10,10 @@
     "client"
   ],
   "scripts": {
+    "dev": "trap 'kill 0' EXIT; npm run dev:party & npm run dev:client",
     "test": "npm run test --workspace=@cambio/engine",
     "build": "npm run build --workspace=@cambio/shared && npm run build --workspace=@cambio/engine",
+    "deploy": "npm run build --workspace=@cambio/client && cd party && npx partykit deploy",
     "dev:party": "npm run dev --workspace=@cambio/party",
     "dev:client": "npm run dev --workspace=@cambio/client"
   },
