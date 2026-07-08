@@ -177,4 +177,88 @@ console.log("\n# full game drains the deck and scores lowest");
   );
 }
 
+console.log("\n# rejoin by identity + explicit leave aborts to lobby");
+{
+  const g = new Game();
+  g.addPlayer("alice", "Alice");
+  g.addPlayer("bob", "Bob");
+  g.startGame("alice");
+  assert(g.phase === "playing", "game started");
+
+  // Bob's connection drops (transient) then he rejoins with the same seat key.
+  g.setConnected("bob", false);
+  assert(g.players.find((p) => p.id === "bob")!.connected === false, "bob offline");
+  const seat = g.addPlayer("bob", "Bob");
+  assert(
+    seat.connected === true && g.players.length === 2,
+    "rejoin reclaims the same seat (no duplicate)"
+  );
+  assert(g.phase === "playing", "rejoin does not disrupt the game");
+
+  // Alice taps Leave -> the room aborts back to the lobby for Bob.
+  g.removePlayer("alice");
+  assert(g.phase === "lobby", "explicit leave mid-game returns to lobby");
+  assert(
+    g.players.length === 1 && g.players[0].id === "bob",
+    "leaver removed, other player kept"
+  );
+  assert(g.players[0].isHost === true, "remaining player becomes host");
+  assert(g.players[0].hand.length === 0, "hands cleared on abort");
+}
+
+console.log("\n# dev god-mode reveals only to the god viewer + set/rig cards");
+{
+  const g = playing([C("2"), C("3"), C("4")], [C("5"), C("6"), C("7")], [C("K"), C("Q")]);
+  assert(
+    g.buildView("A").players[1].hand.every((c) => c && !c.faceUp),
+    "normal: A cannot see B"
+  );
+  g.setGodView("A", true);
+  assert(
+    g.buildView("A").players[1].hand.every((c) => c && c.faceUp),
+    "god A sees all of B's cards"
+  );
+  assert(
+    g.buildView("B").players[0].hand.every((c) => c && !c.faceUp),
+    "B (non-god) still cannot see A — no leak"
+  );
+  g.setGodView("A", false);
+  assert(
+    g.buildView("A").players[1].hand.every((c) => c && !c.faceUp),
+    "god off: A is blind again"
+  );
+
+  g.devSetSlot("B", 0, "K", "spades");
+  assert(g.players[1].hand[0]?.rank === "K", "devSetSlot placed a K in B's slot 0");
+  g.devSetDeckTop("A", "hearts");
+  g.drawFromDeck("A");
+  assert(g.held?.rank === "A", "devSetDeckTop rigged the next draw to an Ace");
+}
+
+console.log("\n# swaps must be between the two players + position logging");
+{
+  const g = playing([C("2"), C("3"), C("4")], [C("5"), C("6"), C("7")], [C("K"), C("Q")]);
+  g.drawFromDeck("A");
+  g.discardHeld("A"); // Q => queenSwap
+  expectThrow(
+    () => g.powerSwap("A", { playerId: "A", slot: 0 }, { playerId: "A", slot: 1 }),
+    "Queen rejects swapping two of your own cards"
+  );
+  g.powerSwap("A", { playerId: "A", slot: 0 }, { playerId: "B", slot: 2 });
+  assert(
+    g.log.some((l) => l.includes("#1") && l.includes("#3")),
+    "swap log reports both positions (1-indexed)"
+  );
+}
+{
+  const g = playing([C("2"), C("3"), C("4")], [C("9"), C("6"), C("7")], [C("K"), C("J")]);
+  g.drawFromDeck("A");
+  g.discardHeld("A"); // J => jackPeekSwap
+  g.powerPeek("A", { playerId: "A", slot: 0 }); // peek your OWN card
+  expectThrow(
+    () => g.powerSwap("A", { playerId: "A", slot: 0 }, { playerId: "A", slot: 1 }),
+    "Jack rejects swapping two of your own cards"
+  );
+}
+
 console.log(`\n✅ v1 engine smoke test passed (${pass} assertions).`);

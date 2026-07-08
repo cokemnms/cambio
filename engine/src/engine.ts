@@ -4,11 +4,13 @@ import type {
   GameResult,
   GameStateView,
   PlayerView,
+  Rank,
   Reveal,
   SlotRef,
+  Suit,
 } from "@cambio/shared";
 import { V1_RULES, type Power, type Rules } from "./rules.js";
-import { buildDeck, shuffle } from "./deck.js";
+import { buildDeck, makeCard, shuffle } from "./deck.js";
 
 interface EnginePlayer {
   id: string;
@@ -49,6 +51,8 @@ export class Game {
   /** For J: the card peeked during the power, awaiting an optional swap. */
   jackPeeked: SlotRef | null = null;
   reveals: InternalReveal[] = [];
+  /** Viewer ids with god-mode (see all cards). Server-gated; empty in normal play. */
+  godViewers = new Set<string>();
   log: string[] = [];
   result: GameResult | null = null;
 
@@ -79,16 +83,35 @@ export class Game {
     return p;
   }
 
+  /**
+   * Intentional leave (the player tapped "Leave"). The seat is freed for real.
+   * A transient disconnect goes through setConnected() instead, which keeps the
+   * seat so the player can rejoin. Leaving mid-game aborts the room to the lobby
+   * since a 2-player game can't continue a player short.
+   */
   removePlayer(id: string): void {
     const idx = this.players.findIndex((p) => p.id === id);
     if (idx === -1) return;
-    const wasHost = this.players[idx].isHost;
-    if (this.phase === "lobby") {
-      this.players.splice(idx, 1);
-    } else {
-      this.players[idx].connected = false; // keep the seat mid-game
-    }
+    const { isHost: wasHost, name } = this.players[idx];
+    const wasPlaying = this.phase === "playing";
+    this.players.splice(idx, 1);
     if (wasHost && this.players.length > 0) this.players[0].isHost = true;
+    if (wasPlaying) this.abortToLobby(`${name} left — back to the lobby`);
+  }
+
+  private abortToLobby(reason: string): void {
+    this.phase = "lobby";
+    this.turnPhase = "idle";
+    this.activeIndex = 0;
+    this.deck = [];
+    this.discard = [];
+    this.reveals = [];
+    this.held = null;
+    this.pendingPower = "none";
+    this.jackPeeked = null;
+    this.result = null;
+    for (const p of this.players) p.hand = [];
+    this.log = [reason];
   }
 
   setConnected(id: string, connected: boolean): void {
@@ -161,7 +184,7 @@ export class Game {
     this.held = null;
     if (displaced) {
       this.discard.push(displaced);
-      this.pushLog(`${p.name} swapped a card`);
+      this.pushLog(`${p.name} swapped in at #${slot + 1}`);
       this.resolveDiscardPower(displaced);
     } else {
       this.endTurn();
@@ -224,15 +247,18 @@ export class Game {
     this.assertActiveTurn(playerId, "power");
 
     if (this.pendingPower === "queenSwap") {
+      if (first.playerId === second.playerId)
+        throw new GameError("Swap must be between the two players");
       this.swapSlots(first, second);
-      this.pushLog(`${this.activePlayer.name} blind-swapped two cards`);
+      this.pushLog(this.swapLog(first, second));
       this.endTurn();
       return;
     }
 
     if (this.pendingPower === "jackPeekSwap") {
       if (!this.jackPeeked) throw new GameError("Peek a card first");
-      // One side must be the peeked card, the other must be your own card.
+      // One side must be the peeked card, the other must be your own card,
+      // and the two must belong to different players.
       const peeked = this.jackPeeked;
       const isPeeked = (r: SlotRef) =>
         r.playerId === peeked.playerId && r.slot === peeked.slot;
@@ -241,8 +267,10 @@ export class Game {
       if (!peekedRef) throw new GameError("The swap must use the peeked card");
       if (otherRef.playerId !== playerId)
         throw new GameError("Swap the peeked card with one of your own");
+      if (peekedRef.playerId === otherRef.playerId)
+        throw new GameError("Swap must be between the two players");
       this.swapSlots(peekedRef, otherRef);
-      this.pushLog(`${this.activePlayer.name} took the peeked card (Jack)`);
+      this.pushLog(this.swapLog(peekedRef, otherRef));
       this.endTurn();
       return;
     }
@@ -264,6 +292,13 @@ export class Game {
     const tmp = pa.hand[a.slot];
     pa.hand[a.slot] = pb.hand[b.slot];
     pb.hand[b.slot] = tmp;
+  }
+
+  /** Position-only swap log (both players see it — no card values leak). */
+  private swapLog(a: SlotRef, b: SlotRef): string {
+    const na = this.players.find((p) => p.id === a.playerId)?.name ?? "?";
+    const nb = this.players.find((p) => p.id === b.playerId)?.name ?? "?";
+    return `${this.activePlayer.name} swapped ${na} #${a.slot + 1} ↔ ${nb} #${b.slot + 1}`;
   }
 
   // ---- Turn / game end ------------------------------------------------
@@ -361,6 +396,41 @@ export class Game {
     if (this.log.length > 30) this.log.shift();
   }
 
+  // ---- Dev / god-mode (server-gated by DEV_SECRET) -------------------
+
+  setGodView(viewerId: string, on: boolean): void {
+    if (on) this.godViewers.add(viewerId);
+    else this.godViewers.delete(viewerId);
+  }
+
+  devSetSlot(playerId: string, slot: number, rank: Rank, suit: Suit): void {
+    const p = this.mustPlayer(playerId);
+    if (slot < 0 || slot >= p.hand.length) throw new GameError("Bad slot");
+    p.hand[slot] = makeCard(rank, suit);
+  }
+
+  devSetHeld(rank: Rank, suit: Suit): void {
+    this.held = makeCard(rank, suit);
+  }
+
+  devSetDeckTop(rank: Rank, suit: Suit): void {
+    this.deck.push(makeCard(rank, suit));
+  }
+
+  devSetTurn(playerId: string): void {
+    const idx = this.players.findIndex((p) => p.id === playerId);
+    if (idx === -1) throw new GameError("Unknown player");
+    this.activeIndex = idx;
+    this.turnPhase = "draw";
+    this.held = null;
+    this.pendingPower = "none";
+    this.jackPeeked = null;
+  }
+
+  devEndGame(): void {
+    if (this.phase === "playing") this.endGame();
+  }
+
   // ---- View building (redaction) -------------------------------------
 
   private cardView(card: Card, faceUp: boolean): CardView {
@@ -375,6 +445,7 @@ export class Game {
   }
 
   private canSee(viewerId: string, playerId: string, slot: number): boolean {
+    if (this.godViewers.has(viewerId)) return true;
     if (this.phase === "gameEnd") return true;
     return this.reveals.some(
       (r) => r.viewerId === viewerId && r.playerId === playerId && r.slot === slot
