@@ -8,6 +8,7 @@
     selectable?: boolean;
     selected?: boolean;
     highlight?: boolean;
+    peeked?: boolean;
     empty?: boolean;
     onclick?: () => void;
   }
@@ -19,6 +20,7 @@
     selectable = false,
     selected = false,
     highlight = false,
+    peeked = false,
     empty = false,
     onclick,
   }: Props = $props();
@@ -32,11 +34,19 @@
 
   const faceUp = $derived(!!card?.faceUp && !faceDown);
   const red = $derived(card?.suit === "hearts" || card?.suit === "diamonds");
+  const glyph = $derived(SUIT[card?.suit ?? "spades"]);
 </script>
+
+{#snippet content()}
+  {#if faceUp}
+    <span class="card-idx">{card?.rank}<small>{glyph}</small></span>
+    <span class="card-pip">{glyph}</span>
+  {/if}
+{/snippet}
 
 {#if empty || card === null}
   <div class="card card-{size} card-empty"></div>
-{:else}
+{:else if onclick}
   <button
     type="button"
     class="card card-{size}"
@@ -46,14 +56,20 @@
     class:card-selectable={selectable}
     class:card-selected={selected}
     class:card-highlight={highlight}
-    disabled={!selectable && !onclick}
+    class:card-peeked={peeked}
     {onclick}
   >
-    {#if faceUp}
-      <span class="card-rank">{card.rank}</span>
-      <span class="card-suit">{SUIT[card.suit ?? "spades"]}</span>
-    {:else}
-      <span class="card-back-emblem">✦</span>
-    {/if}
+    {@render content()}
   </button>
+{:else}
+  <div
+    class="card card-{size}"
+    class:card-face={faceUp}
+    class:card-back={!faceUp}
+    class:card-red={red}
+    class:card-highlight={highlight}
+    class:card-peeked={peeked}
+  >
+    {@render content()}
+  </div>
 {/if}

@@ -63,7 +63,7 @@
   </div>
 
   <button class="btn btn-share" onclick={share}>
-    {copied ? "Link copied!" : "📤 Share invite"}
+    {copied ? "Link copied!" : "Share invite"}
   </button>
 
   <div class="players">
