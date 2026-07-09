@@ -24,10 +24,13 @@ A TypeScript monorepo (npm workspaces), no backend server to manage:
 - **`engine/`** — the authoritative game logic (deck, turns, powers, scoring,
   per-viewer redaction). Pure and isomorphic, so it runs both on the server and
   in the browser for pass & play.
-- **`party/`** — a [PartyKit](https://docs.partykit.io) server: one *party* per
-  room. Holds the single authoritative `Game` and pushes a **redacted** view to
-  each connection after every move — a hidden card's rank/suit never reaches a
-  client that shouldn't see it.
+- **`party/`** — the realtime backend on [Cloudflare Workers](https://developers.cloudflare.com/workers/),
+  built with [partyserver](https://github.com/cloudflare/partyserver): one
+  [Durable Object](https://developers.cloudflare.com/durable-objects/) per room.
+  Holds the single authoritative `Game` and pushes a **redacted** view to each
+  connection after every move — a hidden card's rank/suit never reaches a client
+  that shouldn't see it. The same Worker also serves the client, so the UI and
+  the realtime server share one origin.
 - **`client/`** — [Svelte 5](https://svelte.dev) + [Vite](https://vitejs.dev),
   mobile-first. Two switchable table themes and synthesized sound effects.
 
@@ -37,7 +40,7 @@ The client renders state and sends intents; the server decides every outcome.
 
 ```bash
 npm install      # installs all workspaces
-npm run dev      # runs the PartyKit server (:1999) and the client (:5173) together
+npm run dev      # runs the Worker (:1999) and the client (:5173) together
 ```
 
 Open the printed **Network** URL on your phone (same Wi-Fi) — e.g.
@@ -60,18 +63,19 @@ redaction (hidden cards stay hidden) — no browser needed.
 
 ## Deploy
 
-Deployed via PartyKit → Cloudflare. One command builds the client and ships both
-the UI and the realtime server to the same origin:
+Deployed to [Cloudflare Workers](https://developers.cloudflare.com/workers/) (free
+tier). One command builds the client and ships both the UI and the realtime server
+to the same origin:
 
 ```bash
-npx partykit login   # first time only — browser GitHub auth
-npm run deploy
+npx wrangler login   # first time only — browser auth for your Cloudflare account
+npm run deploy       # builds the client, then `wrangler deploy` from party/
 ```
 
-It provisions `https://cambio.<your-github-username>.partykit.dev` (HTTPS/wss,
-works from anywhere). Reload to pick up a new deploy — pushing to git does not
-deploy on its own. In-memory rooms reset on deploy, so ship when nobody's
-mid-game.
+It provisions `https://cambio.<your-subdomain>.workers.dev` (HTTPS/wss, works from
+anywhere), where `<your-subdomain>` is your account's `workers.dev` subdomain.
+Reload to pick up a new deploy — pushing to git does not deploy on its own.
+In-memory rooms reset on deploy, so ship when nobody's mid-game.
 
 ## The v1 ruleset
 
