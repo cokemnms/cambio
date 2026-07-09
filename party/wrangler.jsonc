@@ -3,6 +3,8 @@
   "name": "cambio",
   "main": "src/server.ts",
   "compatibility_date": "2026-05-03",
+  "workers_dev": true,
+  "preview_urls": false,
   "durable_objects": {
     "bindings": [{ "name": "Cambio", "class_name": "Cambio" }]
   },
