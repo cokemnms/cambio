@@ -10,7 +10,7 @@ import type {
   Suit,
 } from "@cambio/shared";
 import { V1_RULES, type Power, type Rules } from "./rules.js";
-import { buildDeck, makeCard, shuffle } from "./deck.js";
+import { buildDeck, shuffle } from "./deck.js";
 
 interface EnginePlayer {
   id: string;
@@ -26,6 +26,14 @@ interface InternalReveal {
   slot: number;
   expiresAt: number;
 }
+
+// A physical location a card can occupy — used by the dev rig tools to move a
+// real card into a target position without ever fabricating one.
+type Loc =
+  | { z: "deck"; i: number }
+  | { z: "discard"; i: number }
+  | { z: "held" }
+  | { z: "hand"; p: EnginePlayer; slot: number };
 
 export type Phase = GameStateView["phase"];
 export type TurnPhase = GameStateView["turnPhase"];
@@ -406,15 +414,81 @@ export class Game {
   devSetSlot(playerId: string, slot: number, rank: Rank, suit: Suit): void {
     const p = this.mustPlayer(playerId);
     if (slot < 0 || slot >= p.hand.length) throw new GameError("Bad slot");
-    p.hand[slot] = makeCard(rank, suit);
+    this.rigInto({ z: "hand", p, slot }, rank, suit);
   }
 
   devSetHeld(rank: Rank, suit: Suit): void {
-    this.held = makeCard(rank, suit);
+    this.rigInto({ z: "held" }, rank, suit);
   }
 
   devSetDeckTop(rank: Rank, suit: Suit): void {
-    this.deck.push(makeCard(rank, suit));
+    if (this.deck.length === 0) throw new GameError("Deck is empty");
+    this.rigInto({ z: "deck", i: this.deck.length - 1 }, rank, suit);
+  }
+
+  // Move the real (rank, suit) card into `target`, swapping the evicted card
+  // into the found card's old spot. Conserves the card multiset — the card must
+  // already exist in play, so nothing is ever fabricated or duplicated.
+  private rigInto(target: Loc, rank: Rank, suit: Suit): void {
+    const src = this.findLoc(rank, suit);
+    if (!src) throw new GameError(`No ${rank} of ${suit} in play to place`);
+    if (this.sameLoc(src, target)) return;
+    const desired = this.getAt(src); // non-null: findLoc only returns matches
+    const evicted = this.getAt(target); // may be null (empty slot / held)
+    this.putAt(target, desired);
+    this.putAt(src, evicted);
+  }
+
+  private findLoc(rank: Rank, suit: Suit): Loc | null {
+    const hit = (c: Card | null) => c !== null && c.rank === rank && c.suit === suit;
+    for (let i = 0; i < this.deck.length; i++) if (hit(this.deck[i])) return { z: "deck", i };
+    for (let i = 0; i < this.discard.length; i++)
+      if (hit(this.discard[i])) return { z: "discard", i };
+    if (hit(this.held)) return { z: "held" };
+    for (const p of this.players)
+      for (let slot = 0; slot < p.hand.length; slot++)
+        if (hit(p.hand[slot])) return { z: "hand", p, slot };
+    return null;
+  }
+
+  private getAt(loc: Loc): Card | null {
+    switch (loc.z) {
+      case "deck":
+        return this.deck[loc.i];
+      case "discard":
+        return this.discard[loc.i];
+      case "held":
+        return this.held;
+      case "hand":
+        return loc.p.hand[loc.slot];
+    }
+  }
+
+  private putAt(loc: Loc, card: Card | null): void {
+    switch (loc.z) {
+      case "deck":
+        if (card === null) this.deck.splice(loc.i, 1);
+        else this.deck[loc.i] = card;
+        return;
+      case "discard":
+        if (card === null) this.discard.splice(loc.i, 1);
+        else this.discard[loc.i] = card;
+        return;
+      case "held":
+        this.held = card;
+        return;
+      case "hand":
+        loc.p.hand[loc.slot] = card;
+        return;
+    }
+  }
+
+  private sameLoc(a: Loc, b: Loc): boolean {
+    if (a.z === "held" && b.z === "held") return true;
+    if (a.z === "deck" && b.z === "deck") return a.i === b.i;
+    if (a.z === "discard" && b.z === "discard") return a.i === b.i;
+    if (a.z === "hand" && b.z === "hand") return a.p === b.p && a.slot === b.slot;
+    return false;
   }
 
   devSetTurn(playerId: string): void {

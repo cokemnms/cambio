@@ -206,9 +206,16 @@ console.log("\n# rejoin by identity + explicit leave aborts to lobby");
   assert(g.players[0].hand.length === 0, "hands cleared on abort");
 }
 
-console.log("\n# dev god-mode reveals only to the god viewer + set/rig cards");
+console.log("\n# dev-mode reveals only to the dev viewer + rig relocates real cards (no fabrication)");
 {
   const g = playing([C("2"), C("3"), C("4")], [C("5"), C("6"), C("7")], [C("K"), C("Q")]);
+  const countCards = (): number => {
+    let n = g.deck.length + g.discard.length + (g.held ? 1 : 0);
+    for (const p of g.players) n += p.hand.filter((c) => c).length;
+    return n;
+  };
+  const total = countCards();
+
   assert(
     g.buildView("A").players[1].hand.every((c) => c && !c.faceUp),
     "normal: A cannot see B"
@@ -216,23 +223,36 @@ console.log("\n# dev god-mode reveals only to the god viewer + set/rig cards");
   g.setGodView("A", true);
   assert(
     g.buildView("A").players[1].hand.every((c) => c && c.faceUp),
-    "god A sees all of B's cards"
+    "dev viewer A sees all of B's cards"
   );
   assert(
     g.buildView("B").players[0].hand.every((c) => c && !c.faceUp),
-    "B (non-god) still cannot see A — no leak"
+    "B (non-dev) still cannot see A — no leak"
   );
   g.setGodView("A", false);
   assert(
     g.buildView("A").players[1].hand.every((c) => c && !c.faceUp),
-    "god off: A is blind again"
+    "dev off: A is blind again"
   );
 
+  // Rig B's slot 0 to the K, which lives in the deck — it must MOVE, not be conjured.
   g.devSetSlot("B", 0, "K", "spades");
-  assert(g.players[1].hand[0]?.rank === "K", "devSetSlot placed a K in B's slot 0");
-  g.devSetDeckTop("A", "hearts");
+  assert(g.players[1].hand[0]?.rank === "K", "devSetSlot placed the K in B's slot 0");
+  assert(!g.deck.some((c) => c.rank === "K"), "the K left the deck (relocated, not copied)");
+  assert(g.deck.some((c) => c.rank === "5"), "B's evicted 5 went back into the deck");
+  assert(countCards() === total, "no card fabricated: total count unchanged after rig");
+
+  // Rig the next draw to an existing card (the 5 now sitting in the deck).
+  g.devSetDeckTop("5", "spades");
   g.drawFromDeck("A");
-  assert(g.held?.rank === "A", "devSetDeckTop rigged the next draw to an Ace");
+  assert(g.held?.rank === "5", "devSetDeckTop rigged the next draw to the 5");
+  assert(countCards() === total, "still conserved after rigging the deck top");
+
+  // A card that is nowhere in play cannot be rigged — no fabrication.
+  expectThrow(
+    () => g.devSetSlot("A", 0, "A", "hearts"),
+    "rigging a non-existent card throws (no fabrication)"
+  );
 }
 
 console.log("\n# swaps must be between the two players + position logging");
